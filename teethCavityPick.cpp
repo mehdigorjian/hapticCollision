@@ -19,9 +19,9 @@ class DataTransportClass  // This class carried data into the ServoLoop thread
     TriMesh* c1;
     TriMesh* c2;
 };
-double chargeRadius = 2.0;  // This variable defines the radius around the charge when the inverse square law changes to a spring force law.
-hduMatrix WorldToDevice;    // This matrix contains the World Space to DeviceSpace Transformation
-hduVector3Dd forceVec;      // This variable contains the force vector.
+double chargeRadius = 10.0;  // This variable defines the radius around the charge when the inverse square law changes to a spring force law.
+hduMatrix WorldToDevice;     // This matrix contains the World Space to DeviceSpace Transformation
+hduVector3Dd forceVec;       // This variable contains the force vector.
 
 // Callback functions
 void button1DownCallback(unsigned int ShapeID);
@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
     // Load cube1 model
     dataObject.c1 = new TriMesh("models/TeethCavityPickModels/cube.obj");
     gDentureGum = dataObject.c1;
-    dataObject.c1->setName("cube");
+    dataObject.c1->setName("cube1");
     dataObject.c1->setShapeColor(1.0, 0.5, 0.65);
     dataObject.c1->setRotation(hduVector3Dd(1.0, 0.0, 0.0), 45.0);
     dataObject.c1->setStiffness(0.6);
@@ -81,7 +81,7 @@ int main(int argc, char* argv[]) {
     // Load cube2 model
     dataObject.c2 = new TriMesh("models/TeethCavityPickModels/cube.obj");
     gDentureGum = dataObject.c1;
-    dataObject.c2->setName("cube");
+    dataObject.c2->setName("cube2");
     dataObject.c2->setShapeColor(0.1, 0.5, 0.65);
     dataObject.c2->setRotation(hduVector3Dd(1.0, 0.0, 0.0), 45.0);
     dataObject.c2->setTranslation(hduVector3Dd(25.0, 0.0, 0.0));
