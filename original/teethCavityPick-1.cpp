@@ -4,7 +4,6 @@
 // November 11, 2008
 // Programmer: Venkat Gourishankar
 //////////////////////////////////////////////////////////////////////////////
-#include <HDU/hduMatrix.h>
 #include <QHHeadersGLUT.h>  //Include all necessary headers
 
 #include <cstdio>
@@ -14,23 +13,13 @@
 #include <cmath>
 #include <eigen3/Eigen/Geometry>
 
-// Eigen::Vector3d hcurr_temp;
-// Eigen::Vector3d ocurr_temp;
-
-// std::vector<Eigen::Vector3d> optitrack_ptsA;
-// std::vector<Eigen::Vector3d> haptic_ptsB;
-bool matrix_flag = false;
-
-// std::shared_ptr<coordinateTransform> t;  // = std::make_shared<coordinateTransform>();
-// std::shared_ptr<OptiTrack> opti = std::make_shared<OptiTrack>();
-
 class DataTransportClass  // This class carried data into the ServoLoop thread
 {
    public:
     TriMesh* c1;
     TriMesh* c2;
 };
-double chargeRadius = 10.0;  // This variable defines the radius around the charge when the inverse square law changes to a spring force law.
+double chargeRadius = 5.0;  // This variable defines the radius around the charge when the inverse square law changes to a spring force law.
 double multiplierFactor = 40.0;
 hduMatrix WorldToDevice;  // This matrix contains the World Space to DeviceSpace Transformation
 hduVector3Dd forceVec;    // This variable contains the force vector.
@@ -41,15 +30,32 @@ void button1UpCallback(unsigned int ShapeID);
 void touchCallback(unsigned int ShapeID);
 
 void graphicsCallback(void);
-void glutMenuFunction(int);
 
 void HLCALLBACK computeForceCB(HDdouble force[3], HLcache* cache, void* userdata);                    // Servo loop callback
 void HLCALLBACK startEffectCB(HLcache* cache, void* userdata);                                        // Servo Loop callback
 void HLCALLBACK stopEffectCB(HLcache* cache, void* userdata);                                         // Servo Loop callback
 hduVector3Dd forceField(hduVector3Dd Pos1, hduVector3Dd Pos2, HDdouble Multiplier, HLdouble Radius);  // This function computer the force beween the Model and the particle based on the positions
 
-Text* notCallibrate = nullptr;
-Text* calibInstruction = nullptr;
+// Global state for directing callback function behavior
+bool button1Down;
+bool cursorMoving;
+bool draggingGumModel;
+bool draggingTeethModel;
+bool draggingCavityFillModel;
+bool draggingCavityModel;
+
+TriMesh* gDentureGum = NULL;
+TriMesh* gDentureTeeth = NULL;
+TriMesh* gDentureCavityFill = NULL;
+TriMesh* gDentureCavity = NULL;
+
+Box* gStartButton = NULL;
+Box* gResetButton = NULL;
+
+Text* gStartupMsg = NULL;
+Text* gResetMsg = NULL;
+Text* gInstructionMsg = NULL;
+Text* gSuccessMsg = NULL;
 
 int main(int argc, char* argv[]) {
     QHGLUT* DisplayObject = new QHGLUT(argc, argv);  // create a display window
@@ -63,44 +69,142 @@ int main(int argc, char* argv[]) {
     DataTransportClass dataObject;  // Initialize an Object to transport data into the servoloop callback
 
     // Load cube1 model
-    dataObject.c1 = new TriMesh("models/TeethCavityPickModels/t21.obj");
+    dataObject.c1 = new TriMesh("models/TeethCavityPickModels/c21.obj");
+    gDentureGum = dataObject.c1;
     dataObject.c1->setName("cube1");
     dataObject.c1->setShapeColor(1.0, 0.5, 0.65);
     dataObject.c1->setRotation(hduVector3Dd(1.0, 0.0, 0.0), 45.0);
-    dataObject.c1->setTranslation(hduVector3Dd(0.0, 0.0, 0.0));
     dataObject.c1->setStiffness(0.6);
     dataObject.c1->setDamping(0.1);
-    dataObject.c1->setFriction(0.0, 0.9);
-    dataObject.c1->setMass(0.9);
+    dataObject.c1->setFriction(0.5, 0.9);
     DisplayObject->tell(dataObject.c1);  // Tell quickhaptics that cube exists
 
     // Load cube2 model
-    dataObject.c2 = new TriMesh("models/TeethCavityPickModels/c21.obj");
+    dataObject.c2 = new TriMesh("models/TeethCavityPickModels/t21.obj");
+    gDentureGum = dataObject.c1;
     dataObject.c2->setName("cube2");
     dataObject.c2->setShapeColor(0.1, 0.5, 0.65);
     dataObject.c2->setRotation(hduVector3Dd(1.0, 0.0, 0.0), 45.0);
-    dataObject.c2->setTranslation(hduVector3Dd(50.0, 0.0, 0.0));
+    dataObject.c2->setTranslation(hduVector3Dd(25.0, 0.0, 0.0));
     dataObject.c2->setStiffness(0.6);
     dataObject.c2->setDamping(0.1);
-    dataObject.c2->setFriction(0.0, 0.9);
-    dataObject.c2->setMass(0.9);
+    dataObject.c2->setFriction(0.5, 0.9);
     DisplayObject->tell(dataObject.c2);  // Tell quickhaptics that cube exists
 
-    Text* text1 = new Text(20.0, "System Not Callibrated!", 0.15, 0.9);
-    notCallibrate = text1;
-    text1->setName("startupMsg");
-    text1->setShapeColor(1.0, 0.05, 0.05);
-    text1->setHapticVisibility(false);
-    text1->setGraphicVisibility(true);
-    DisplayObject->tell(text1);
+    // Load gums model
+    TriMesh* tm = new TriMesh("models/TeethCavityPickModels/dentures-gums.obj");
+    gDentureGum = tm;
 
-    text1 = new Text(10.0, "Use right-click to push points (min 3 pts) then callibrate.", 0.1, 0.85);
-    calibInstruction = text1;
-    text1->setName("instructionMsg");
-    text1->setShapeColor(1.0, 0.05, 0.05);
-    text1->setHapticVisibility(false);
-    text1->setGraphicVisibility(true);
-    DisplayObject->tell(text1);
+    tm->setName("dentureGum");
+    tm->setShapeColor(1.0, 0.5, 0.65);
+    tm->setRotation(hduVector3Dd(1.0, 0.0, 0.0), 45.0);
+    tm->setStiffness(0.5);
+    tm->setDamping(0.6);
+    tm->setFriction(0.3, 0.0);
+    DisplayObject->tell(tm);  // Tell quickhaptics that gums exists
+
+    // Load teeth model
+    tm = new TriMesh("models/TeethCavityPickModels/dentures-teeth.obj");
+    gDentureTeeth = tm;
+
+    tm->setName("dentureTeeth");
+    tm->setRotation(hduVector3Dd(1.0, 0.0, 0.0), 45.0);
+    tm->setStiffness(1.0);
+    tm->setDamping(0.0);
+    tm->setFriction(0.0, 0.2);
+    DisplayObject->tell(tm);
+
+    // Load cavity model
+    tm = new TriMesh("models/TeethCavityPickModels/dentures-cavity fill.obj");
+    gDentureCavityFill = tm;
+    tm->setName("dentureCavityFill");
+    tm->setRotation(hduVector3Dd(1.0, 0.0, 0.0), 45.0);
+    tm->setPopthrough(0.5);
+    tm->setStiffness(0.6);
+    tm->setDamping(0.3);
+    tm->setFriction(0.5, 0.4);
+    DisplayObject->tell(tm);
+
+    // Load cavity "target"
+    tm = new TriMesh("models/TeethCavityPickModels/dentures-marker.obj");
+    gDentureCavity = tm;
+
+    tm->setName("dentureCavity");
+    tm->setUnDraggable();
+    tm->setRotation(hduVector3Dd(1.0, 0.0, 0.0), 45.0);
+    tm->setStiffness(0.2);
+    tm->setDamping(0.4);
+    tm->setFriction(0.0, 0.0);
+    DisplayObject->tell(tm);
+
+    // SensAble logo
+    Plane* logoBox = new Plane(15, 9);
+    logoBox->setTranslation(53.0, -27.0, 30.0);
+    logoBox->setHapticVisibility(false);
+    logoBox->setTexture("models/TeethCavityPickModels/sensableLogo.jpg");
+    DisplayObject->tell(logoBox);
+
+    // START button
+    Box* box = gStartButton = new Box(20, 10, 10);
+    gStartButton = box;
+
+    box->setName("startButton");
+    box->setUnDraggable();
+    box->setTranslation(60.0, 20.0, 0.0);
+    box->setRotation(hduVector3Dd(0.0, 1.0, 0.0), -15.0);
+    box->setTexture("models/TeethCavityPickModels/start.jpg");
+    DisplayObject->tell(box);
+
+    // RESET button
+    box = new Box(20, 10, 10);
+    gResetButton = box;
+
+    box->setName("resetButton");
+    box->setUnDraggable();
+    box->setTranslation(60.0, -5.0, 0.0);
+    box->setRotation(hduVector3Dd(0.0, 1.0, 0.0), -15.0);
+    box->setTexture("models/TeethCavityPickModels/reset.jpg");
+    DisplayObject->tell(box);
+
+    // Startup Message
+    Text* text = new Text(20.0, "Please touch START & press button 1 to begin", 0.25, 0.9);
+    gStartupMsg = text;
+
+    text->setName("startupMsg");
+    text->setShapeColor(0.0, 0.5, 0.75);
+    text->setHapticVisibility(false);
+    text->setGraphicVisibility(true);
+    DisplayObject->tell(text);
+
+    // Reset Message
+    text = new Text(20.0, "Please touch RESET and press button 1 to Reset the demo", 0.2, 0.85);
+    gResetMsg = text;
+
+    text->setName("resetMsg");
+    text->setShapeColor(0.0, 0.5, 0.75);
+    text->setHapticVisibility(false);
+    text->setGraphicVisibility(false);
+    DisplayObject->tell(text);
+
+    // Instruction Message
+    text = new Text(20.0, "Please locate the cavity by probing the teeth", 0.25, 0.9);
+    gInstructionMsg = text;
+
+    text->setName("instructionMsg");
+    text->setShapeColor(0.0, 0.5, 0.75);
+    text->setHapticVisibility(false);
+    text->setGraphicVisibility(false);
+    DisplayObject->tell(text);
+
+    // Success Message
+    text = new Text(20.0, "OUCH!!&*! You have successfully located the cavity", 0.25, 0.9);
+    gSuccessMsg = text;
+
+    text->setName("successMsg");
+    text->setShapeColor(1.0, 0.35, 0.5);
+    text->setHapticVisibility(false);
+    text->setGraphicVisibility(false);
+    DisplayObject->tell(text);
 
     Cursor* OmniCursor = new Cursor("models/TeethCavityPickModels/dentalPick.obj");  // Load a cursor that looks like a dental pick
     TriMesh* cursorModel = OmniCursor->getTriMeshPointer();
@@ -116,16 +220,14 @@ int main(int argc, char* argv[]) {
     DisplayObject->preDrawCallback(graphicsCallback);
     deviceSpace->startServoLoopCallback(startEffectCB, computeForceCB, stopEffectCB, &dataObject);  // Register the servoloop callback
 
-    deviceSpace->button1UpCallback(button1UpCallback);
+    deviceSpace->button1DownCallback(button1DownCallback, gResetButton);
+    deviceSpace->button1DownCallback(button1DownCallback, gDentureGum);
+    deviceSpace->button1DownCallback(button1DownCallback, gDentureTeeth);
+    deviceSpace->button1DownCallback(button1DownCallback, gDentureCavityFill);
+    deviceSpace->button1DownCallback(button1DownCallback, gStartButton);
+    deviceSpace->touchCallback(touchCallback, gDentureCavity);
 
-    // Create the GLUT menu
-    glutCreateMenu(glutMenuFunction);
-    // Add entries
-    glutAddMenuEntry("push point", 0);
-    glutAddMenuEntry("pop point", 1);
-    glutAddMenuEntry("calibrate", 2);
-    // attache to the menu
-    glutAttachMenu(GLUT_RIGHT_BUTTON);
+    deviceSpace->button1UpCallback(button1UpCallback);
 
     qhStart();  // Set everything in motion
     return 0;
@@ -134,20 +236,75 @@ int main(int argc, char* argv[]) {
 void button1DownCallback(unsigned int ShapeID) {
     TriMesh* modelTouched = TriMesh::searchTriMesh(ShapeID);
     Box* buttonTouched = Box::searchBox(ShapeID);
+
+    draggingGumModel = false;
+    draggingTeethModel = false;
+    draggingCavityFillModel = false;
+    draggingCavityModel = false;
+
+    if (modelTouched == gDentureGum) {
+        draggingGumModel = true;
+
+        gDentureTeeth->setHapticVisibility(false);
+        gDentureCavityFill->setHapticVisibility(false);
+        gDentureCavity->setHapticVisibility(false);
+    } else if (modelTouched == gDentureTeeth) {
+        draggingTeethModel = true;
+
+        gDentureGum->setHapticVisibility(false);
+        gDentureCavityFill->setHapticVisibility(false);
+        gDentureCavity->setHapticVisibility(false);
+    } else if (modelTouched == gDentureCavityFill) {
+        draggingCavityFillModel = true;
+
+        gDentureTeeth->setHapticVisibility(false);
+        gDentureGum->setHapticVisibility(false);
+        gDentureCavity->setHapticVisibility(false);
+    }
+
+    if (buttonTouched == gStartButton) {
+        gStartupMsg->setGraphicVisibility(false);
+        gInstructionMsg->setGraphicVisibility(true);
+        gSuccessMsg->setGraphicVisibility(false);
+        gResetMsg->setGraphicVisibility(false);
+    } else if (buttonTouched == gResetButton) {
+        gInstructionMsg->setGraphicVisibility(false);
+        gSuccessMsg->setGraphicVisibility(false);
+        gStartupMsg->setGraphicVisibility(true);
+        gResetMsg->setGraphicVisibility(false);
+    }
 }
 
 void button1UpCallback(unsigned int ShapeID) {
-    // draggingGumModel = false;
-    // draggingTeethModel = false;
-    // draggingCavityFillModel = false;
+    draggingGumModel = false;
+    draggingTeethModel = false;
+    draggingCavityFillModel = false;
+
+    gDentureGum->setHapticVisibility(true);
+    gDentureTeeth->setHapticVisibility(true);
+    gDentureCavityFill->setHapticVisibility(true);
+    gDentureCavity->setHapticVisibility(true);
 }
 
 void touchCallback(unsigned int ShapeID) {
     TriMesh* modelTouched = TriMesh::searchTriMesh(ShapeID);
+
+    if (modelTouched == gDentureCavity) {
+        gSuccessMsg->setGraphicVisibility(true);
+        gStartupMsg->setGraphicVisibility(false);
+        gInstructionMsg->setGraphicVisibility(false);
+        gResetMsg->setGraphicVisibility(true);
+
+        gDentureCavityFill->setHapticVisibility(false);
+    } else {
+        gDentureCavityFill->setHapticVisibility(true);
+        gDentureTeeth->setHapticVisibility(true);
+        gDentureGum->setHapticVisibility(true);
+    }
 }
 
 void graphicsCallback() {
-    // hduMatrix globalDragTransform;
+    hduMatrix globalDragTransform;
 
     /////////////////////////////////////////////////////////////////////////////////////////////// getting cursor position
     Cursor* localDeviceCursor = Cursor::searchCursor("devCursor");  // Get a pointer to the cursor
@@ -156,9 +313,25 @@ void graphicsCallback() {
     printf("--------------------------------------------------------- %f, %f, %f\n", localCursorPosition[0], localCursorPosition[1], localCursorPosition[2]);
     ///////////////////////////////////////////////////////////////////////////////////////////////
 
-    if (matrix_flag) {
-        notCallibrate->setGraphicVisibility(false);
-        calibInstruction->setGraphicVisibility(false);
+    if (draggingGumModel) {
+        globalDragTransform = gDentureGum->getTransform();
+
+        gDentureCavity->setTransform(globalDragTransform);
+        gDentureTeeth->setTransform(globalDragTransform);
+        gDentureCavityFill->setTransform(globalDragTransform);
+
+    } else if (draggingTeethModel) {
+        globalDragTransform = gDentureTeeth->getTransform();
+
+        gDentureCavity->setTransform(globalDragTransform);
+        gDentureGum->setTransform(globalDragTransform);
+        gDentureCavityFill->setTransform(globalDragTransform);
+    } else if (draggingCavityFillModel) {
+        globalDragTransform = gDentureCavityFill->getTransform();
+
+        gDentureCavity->setTransform(globalDragTransform);
+        gDentureGum->setTransform(globalDragTransform);
+        gDentureTeeth->setTransform(globalDragTransform);
     }
 }
 
@@ -169,6 +342,9 @@ void graphicsCallback() {
 ****************************************************************************************/
 void HLCALLBACK computeForceCB(HDdouble force[3], HLcache* cache, void* userdata) {
     DataTransportClass* localdataObject = (DataTransportClass*)userdata;  // Typecast the pointer passed in appropriately
+    // hduVector3Dd skullPositionDS;                                         // Position of the skull (Moving sphere) in Device Space.
+    // hduVector3Dd proxyPosition;                                           // Position of the proxy in device space
+
     HDdouble instRate = 0.0;
     HDdouble deltaT = 0.0;
     static float counter = 0.0;
@@ -182,11 +358,8 @@ void HLCALLBACK computeForceCB(HDdouble force[3], HLcache* cache, void* userdata
     degInRad = counter * 20 * 3.14159 / 180;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////// transforming object
-    // hduVector3Dd ModelPos1 = localdataObject->c1->getTranslation();
-    // localdataObject->c1->setTranslation(-ModelPos1);
-
-    // hduVector3Dd ModelPos2 = localdataObject->c2->getTranslation();
-    // localdataObject->c2->setTranslation(-ModelPos2);
+    hduVector3Dd ModelPos = localdataObject->c1->getTranslation();
+    localdataObject->c1->setTranslation(-ModelPos);
 
     // Eigen::Vector3f p = (opti->rigidObjects)[1]->position;
 
@@ -303,28 +476,4 @@ hduVector3Dd forceField(hduVector3Dd Pos1, hduVector3Dd Pos2, HDdouble Multiplie
     }
 
     return forceVec;
-}
-
-void glutMenuFunction(int MenuID) {
-    if (MenuID == 0) {
-        // haptic_ptsB.push_back(hcurr_temp);
-        // optitrack_ptsA.push_back(ocurr_temp);
-    }
-
-    if (MenuID == 1) {
-        // if (haptic_ptsB.size() >= 0)
-        //     haptic_ptsB.pop_back();
-        // if (optitrack_ptsA.size() >= 0)
-        //     optitrack_ptsA.pop_back();
-    }
-
-    if (MenuID == 2) {
-        // calibrate
-        // t = std::make_shared<coordinateTransform>(optitrack_ptsA, haptic_ptsB);
-        // t = new coordinateTransform(optitrack_ptsA, haptic_ptsB);
-        // std::cout << "----------Transformation Matrix----------" << std::endl;
-        // t->calculateTransformMatrix();
-        // std::cout << t.transformMat << std::endl;
-        matrix_flag = true;
-    }
 }

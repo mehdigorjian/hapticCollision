@@ -39,7 +39,6 @@ Eigen::Vector3d ocurr_temp;
 
 std::vector<Eigen::Vector3d> optitrack_ptsA;
 std::vector<Eigen::Vector3d> haptic_ptsB;
-// coordinateTransform *t;
 bool matrix_flag = false;
 
 std::shared_ptr<coordinateTransform> t;  // = std::make_shared<coordinateTransform>();
