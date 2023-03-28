@@ -1,9 +1,3 @@
-/////////////////////////////////////////////////////////////////////////////
-// OpenHaptics QuickHaptics - TeethCavityPick example
-// SensAble Technologies, Woburn, MA
-// November 11, 2008
-// Programmer: Venkat Gourishankar
-//////////////////////////////////////////////////////////////////////////////
 #include <HDU/hduMatrix.h>
 #include <QHHeadersGLUT.h>  //Include all necessary headers
 
